@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
-// @namespace    https://github.com/An1by/RanobeLibArchiver
-// @version      1.2
+// @namespace    https://github.com/SanSan-/RanobeLibArchiver
+// @version      1.3
 // @description  Ranobe from ranobelib.me -> .zip file of .txt
-// @author       An1by
+// @author       An1by & SanSan
 // @include      /^https?:\/\/ranobelib\.me\/ru\/book\/[\w\-]+(?:\?.+|#.*)?$/
 // @icon         https://ranobelib.me/images/logo/rl/favicon.ico
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.9.1/jszip.min.js
@@ -12,60 +12,63 @@
 
 ///////////// FUNCTIONS
 // Default fetch
-async function jsonFetch(url) {
-    const response = await fetch(url, {method: "GET"})
-    const text = await response.text()
-    return JSON.parse(text)
+async function jsonFetch (url) {
+  const response = await fetch(url, { method: 'GET' });
+  const text = await response.text();
+  return JSON.parse(text);
 }
 
 // Chapters
-async function fetchRanobeChapters(ranobeId) {
-    return (await jsonFetch(
-        `https://api.lib.social/api/manga/${ranobeId}/chapters`
-    )).data
+async function fetchRanobeChapters (ranobeId) {
+  return (await jsonFetch(
+    `https://api.lib.social/api/manga/${ranobeId}/chapters`
+  )).data;
 }
 
-async function fetchChapter(ranobeId, volume, number) {
-    return (await jsonFetch(
-        `https://api.lib.social/api/manga/${ranobeId}/chapter?number=${number}&volume=${volume}`
-    )).data
+async function fetchChapter (ranobeId, volume, number) {
+  return (await jsonFetch(
+    `https://api.lib.social/api/manga/${ranobeId}/chapter?number=${number}&volume=${volume}`
+  )).data;
 }
 
-async function fetchRanobeData(ranobeId) {
-    return (await jsonFetch(
-        `https://api.lib.social/api/manga/${ranobeId}?fields[]=background&fields[]=eng_name&fields[]=otherNames&fields[]=summary&fields[]=releaseDate&fields[]=type_id&fields[]=caution&fields[]=views&fields[]=close_view&fields[]=rate_avg&fields[]=rate&fields[]=genres&fields[]=tags&fields[]=teams&fields[]=franchise&fields[]=authors&fields[]=publisher&fields[]=userRating&fields[]=moderated&fields[]=metadata&fields[]=metadata.count&fields[]=metadata.close_comments&fields[]=manga_status_id&fields[]=chap_count&fields[]=status_id&fields[]=artists&fields[]=format`
-    )).data
+async function fetchRanobeData (ranobeId) {
+  return (await jsonFetch(
+    `https://api.lib.social/api/manga/${ranobeId}?fields[]=background&fields[]=eng_name&fields[]=otherNames&fields[]=summary&fields[]=releaseDate&fields[]=type_id&fields[]=caution&fields[]=views&fields[]=close_view&fields[]=rate_avg&fields[]=rate&fields[]=genres&fields[]=tags&fields[]=teams&fields[]=franchise&fields[]=authors&fields[]=publisher&fields[]=userRating&fields[]=moderated&fields[]=metadata&fields[]=metadata.count&fields[]=metadata.close_comments&fields[]=manga_status_id&fields[]=chap_count&fields[]=status_id&fields[]=artists&fields[]=format`
+  )).data;
 }
 
 // Formatting
-function formatRanobeLabel(json) {
-    if ("rus_name" in json)
-        return json.rus_name
-    if ("eng_name" in json)
-        return json.eng_name
-    return json.name
+function formatRanobeLabel (json) {
+  if ('rus_name' in json) {
+    return json.rus_name;
+  }
+  if ('eng_name' in json) {
+    return json.eng_name;
+  }
+  return json.name;
 }
 
 // logging
-function logStartDownload(label, slug) {
-    console.log(`Начата загрузка ${label} (${slug})!`)
+function logStartDownload (label, slug) {
+  console.log(`Начата загрузка ${label} (${slug})!`);
 }
 
-function logTitleCreate(label, slug) {
-    console.log(`Создан файл с описанием ранобе ${label} (${slug})!`)
+function logTitleCreate (label, slug) {
+  console.log(`Создан файл с описанием ранобе ${label} (${slug})!`);
 }
 
-function logChapter(chapter, last_chapter) {
-    console.log(`Скачано: Том ${chapter.volume} Глава ${chapter.number} / Том ${last_chapter.volume} Глава ${last_chapter.number}`)
+function logChapter (chapter, last_chapter) {
+  console.log(
+    `Скачано: Том ${chapter.volume} Глава ${chapter.number} / Том ${last_chapter.volume} Глава ${last_chapter.number}`);
 }
 
-function notify(text) {
-    const fields = document.getElementsByClassName("a0_a1")[0].firstChild
+function notify (text) {
+  const fields = document.getElementsByClassName('ae_af')[0].firstChild;
 
-    const element = document.createElement("div")
-    element.className = "kp_bm"
-    element.innerHTML =
-        `<div class="kp_ap kp_z">
+  const element = document.createElement('div');
+  element.className = 'kp_bm';
+  element.innerHTML =
+    `<div class="kp_ap kp_z">
                 <div class="kp_bw">
                     <svg class="svg-inline--fa fa-circle-info" aria-hidden="true" focusable="false" data-prefix="fas"
                          data-icon="circle-info" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -76,120 +79,136 @@ function notify(text) {
                 <div class="">
                     <div class="kp_v">${text}</div>
                     <!----><!----></div>
-            </div>`
+            </div>`;
 
-    fields.appendChild(element)
+  fields.appendChild(element);
 
-    setTimeout(() => {
-        fields.removeChild(element)
-    }, 3000)
+  setTimeout(() => {
+    fields.removeChild(element);
+  }, 3000);
 }
 
 // Download
-const mangaNumberRegex = new RegExp("^\\d+(--)")
-async function download(e) {
-    notify("Загрузка начата!")
+const mangaNumberRegex = new RegExp('^\\d+(--)');
 
-    try {
-        // Zip
-        const zip = new JSZip()
+async function download (e) {
+  notify('Загрузка начата!');
 
-        // Data
-        const path = window.location.pathname.split("/")
-        const ranobeId = path[path.length - 1]
+  try {
+    // Zip
+    const zip = new JSZip();
 
-        let label
+    // Data
+    const path = window.location.pathname.split('/');
+    const ranobeId = path[path.length - 1];
 
-        const ranobeData = await fetchRanobeData(ranobeId)
-        console.log(ranobeData)
-        const slug = ranobeId.replace(mangaNumberRegex, "");
-        if ("toast" in ranobeData) {
-            // Ranobe Title
-            label = document.getElementsByClassName("nt_nv")[0].innerText
-            const originalLabel = document.getElementsByClassName("nt_nw")[0].innerText
-            const description = document.getElementsByClassName("ur_p")[0].innerText
+    let label;
 
-            // info.txt
-            const infoText = `${label}\n${originalLabel}\n\n`
-                + `--==[ Описание ]==--\n${description}\n\n`
-                + `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeId}`
-            zip.file(
-                `info.txt`,
-                infoText
-            );
-        } else {
-            // Ranobe Title
-            label = formatRanobeLabel(ranobeData)
+    const ranobeData = await fetchRanobeData(ranobeId);
+    console.log(ranobeData);
+    const slug = ranobeId.replace(mangaNumberRegex, '');
+    if ('toast' in ranobeData) {
+      // Ranobe Title
+      label = document.getElementsByClassName('nt_nv')[0].innerText;
+      const originalLabel = document.getElementsByClassName('nt_nw')[0].innerText;
+      const description = document.getElementsByClassName('ur_p')[0].innerText;
 
-            // info.txt
-            const infoText = `${label}\n${ranobeData.name}\n\n`
-                + `--==[ Описание ]==--\n${ranobeData.summary}\n\n`
-                + `--==[ Информация ]==--\nТип: ${ranobeData.type.label}\nВыпуск: ${ranobeData.releaseDate} г.\nСтатус: ${ranobeData.status.label}\nПеревод: ${ranobeData.scanlateStatus.label}\n\n`
-                + `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeData.slug_url}`
-            zip.file(
-                `info.txt`,
-                infoText
-            );
+      // info.txt
+      const infoText = `${label}\n${originalLabel}\n\n`
+        + `--==[ Описание ]==--\n${description}\n\n`
+        + `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeId}`;
+      zip.file(
+        `info.txt`,
+        infoText
+      );
+    } else {
+      // Ranobe Title
+      label = formatRanobeLabel(ranobeData);
+
+      // info.txt
+      const infoText = `${label}\n${ranobeData.name}\n\n`
+        + `--==[ Описание ]==--\n${ranobeData.summary}\n\n`
+        +
+        `--==[ Информация ]==--\nТип: ${ranobeData.type.label}\nВыпуск: ${ranobeData.releaseDate} г.\nСтатус: ${ranobeData.status.label}\nПеревод: ${ranobeData.scanlateStatus.label}\n\n`
+        + `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeData.slug_url}`;
+      zip.file(
+        `info.txt`,
+        infoText
+      );
+    }
+    logStartDownload(label, slug);
+
+    // Chapters .txt
+    const chapters = await fetchRanobeChapters(ranobeId);
+    const last_chapter = chapters[chapters.length - 1];
+    for (const chapterData of chapters) {
+      // ставим задержку 750 мс, чтобы не схватить 429 на больших (100+ глав) проектах
+      const chapter = await new Promise(resolve => setTimeout(resolve, 750))
+        .then(() => fetchChapter(ranobeId, chapterData.volume, chapterData.number));
+
+
+      // Text
+      let builder = `${label}\nТом ${chapter.volume} Глава ${chapterData.number}\n\n`;
+
+      let content = chapter.content;
+      if (content instanceof String || typeof content === 'string') {
+        const p = new DOMParser(), doc = p.parseFromString(content, 'text/html');
+        for (const element of doc.getElementsByTagName('p')) {
+          builder += element.innerText + '\n';
         }
-        logStartDownload(label, slug)
-
-        // Chapters .txt
-        const chapters = await fetchRanobeChapters(ranobeId)
-        const last_chapter = chapters[chapters.length - 1]
-        for (const chapterData of chapters) {
-            const chapter = await fetchChapter(ranobeId, chapterData.volume, chapterData.number)
-
-            // Text
-            let builder = `${label}\nТом ${chapter.volume} Глава ${chapterData.number}\n\n`;
-
-            const p = new DOMParser(), doc = p.parseFromString(chapter.content, "text/html");
-            for (const element of doc.getElementsByTagName("p")) {
-                builder += element.innerText + "\n"
-            }
-
-            zip.file(
-                `v${chapter.volume}_${chapter.number}.txt`,
-                builder
-            );
-            logChapter(chapter, last_chapter)
+      } else if (content instanceof Object && content.type === 'doc' && content.content) {
+        for (const elements of content.content) {
+          if (elements.type === 'paragraph' && elements.content) {
+            builder += elements.content.filter(element => element.type === 'text')
+              .reduce((acc, next) => acc + next.text, '') + '\n';
+          }
         }
+      }
 
-        // Compressing
-        const base64 = await zip.generateAsync({type: "base64"})
-        const a = document.createElement("a");
-        a.href = "data:application/zip;base64," + base64;
-        a.download = `${slug}.zip`;
-        a.click();
-    } catch (e) {
-        console.log(e)
-        notify("Во время загрузки произошла ошибка!")
-        return
+      zip.file(
+        `v${chapter.volume}_${chapter.number}.txt`,
+        builder
+      );
+      logChapter(chapter, last_chapter);
     }
 
-    notify("Загрузка успешно закончена!")
+    // Compressing
+    const base64 = await zip.generateAsync({ type: 'base64' });
+    const a = document.createElement('a');
+    a.href = 'data:application/zip;base64,' + base64;
+    a.download = `${slug}.zip`;
+    a.click();
+  } catch (e) {
+    console.log(e);
+    notify('Во время загрузки произошла ошибка!');
+    return;
+  }
+
+  notify('Загрузка успешно закончена!');
 }
 
 // Button creating
-function createButton() {
-    const elements = document.getElementsByClassName("jh_e7 jh_by");
-    if (elements.length === 0) {
-        return;
-    }
+function createButton () {
+  const elements = document.getElementsByClassName('jn_z jn_t');
+  if (elements.length === 0) {
+    return;
+  }
 
 
-    const downloadButton = document.createElement("div");
-    downloadButton.className = "r8_c6";
-    const be = document.createElement("div");
-    be.className = "r8_be";
-    be.innerText = "📥";
-    downloadButton.appendChild(be)
+  const downloadButton = document.createElement('div');
+  downloadButton.className = 'r8_c6';
+  const be = document.createElement('div');
+  be.className = 'r8_be';
+  be.innerText = '📥';
+  be.style.cursor = 'pointer';
+  downloadButton.appendChild(be);
 
-    const upMenu = elements[0]
-    upMenu.insertBefore(downloadButton, upMenu.firstChild);
+  const upMenu = elements[0];
+  upMenu.insertBefore(downloadButton, upMenu.firstChild);
 
-    downloadButton.addEventListener("click", async (e) => {
-        await download(e)
-    });
+  downloadButton.addEventListener('click', async (e) => {
+    await download(e);
+  });
 }
 
-createButton()
+createButton();
