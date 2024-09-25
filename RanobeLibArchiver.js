@@ -1,46 +1,57 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.5
+// @version      1.6
 // @description  Ranobe from ranobelib.me -> .zip file of .txt
 // @author       An1by & SanSan
 // @include      /^https?:\/\/ranobelib\.me\/ru\/book\/[\w\-]+(?:\?.+|#.*)?$/
 // @icon         https://ranobelib.me/images/logo/rl/favicon.ico
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.9.1/jszip.min.js
 // @require      https://github.com/foliojs/pdfkit/releases/download/v0.15.0/pdfkit.standalone.js
-// @require      https://github.com/devongovett/blob-stream/releases/download/v0.1.3/blob-stream.js
+// @require      https://cdn.jsdelivr.net/npm/blob-stream@0.1.3/+esm
+// @require      https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js
 // @grant        none
 // ==/UserScript==
 
 ///////////// FUNCTIONS
-// Default fetch
+// fetch
 async function jsonFetch (url) {
   const response = await fetch(url, { method: 'GET' });
   const text = await response.text();
   return JSON.parse(text);
 }
 
-// Chapters
 async function fetchRanobeChapters (ranobeId) {
-  return (await jsonFetch(
-    `https://api.lib.social/api/manga/${ranobeId}/chapters`
-  )).data;
+  return (await jsonFetch(`https://api.lib.social/api/manga/${ranobeId}/chapters`)).data;
 }
 
 async function fetchChapter (ranobeId, volume, number) {
   return (await jsonFetch(
-    `https://api.lib.social/api/manga/${ranobeId}/chapter?number=${number}&volume=${volume}`
-  )).data;
+    `https://api.lib.social/api/manga/${ranobeId}/chapter?number=${number}&volume=${volume}`)).data;
 }
 
 async function fetchRanobeData (ranobeId) {
   return (await jsonFetch(
-    `https://api.lib.social/api/manga/${ranobeId}?fields[]=background&fields[]=eng_name&fields[]=otherNames&fields[]=summary&fields[]=releaseDate&fields[]=type_id&fields[]=caution&fields[]=views&fields[]=close_view&fields[]=rate_avg&fields[]=rate&fields[]=genres&fields[]=tags&fields[]=teams&fields[]=franchise&fields[]=authors&fields[]=publisher&fields[]=userRating&fields[]=moderated&fields[]=metadata&fields[]=metadata.count&fields[]=metadata.close_comments&fields[]=manga_status_id&fields[]=chap_count&fields[]=status_id&fields[]=artists&fields[]=format`
-  )).data;
+    `https://api.lib.social/api/manga/${ranobeId}?fields[]=background&fields[]=eng_name&fields[]=otherNames&fields[]=summary&fields[]=releaseDate&fields[]=type_id&fields[]=caution&fields[]=views&fields[]=close_view&fields[]=rate_avg&fields[]=rate&fields[]=genres&fields[]=tags&fields[]=teams&fields[]=franchise&fields[]=authors&fields[]=publisher&fields[]=userRating&fields[]=moderated&fields[]=metadata&fields[]=metadata.count&fields[]=metadata.close_comments&fields[]=manga_status_id&fields[]=chap_count&fields[]=status_id&fields[]=artists&fields[]=format`)).data;
 }
 
 async function getFont () {
   return (await fetch('https://ranobelib.me/build/assets/OpenSans-Regular-C58Z07Fu.ttf')).arrayBuffer();
+}
+
+async function getImage (url) {
+  if (/\.(jpe?g|png)$/gmi.test(url)) {
+    const response = await fetch(url);
+    if (response.status === 200) {
+      return response.arrayBuffer();
+    }
+  }
+}
+
+async function getChapter (ranobeId, chapterData) {
+  // ставим задержку 750 мс, чтобы не схватить 429 на больших (100+ глав) проектах
+  return await new Promise(resolve => setTimeout(resolve, 750))
+    .then(() => fetchChapter(ranobeId, chapterData.volume, chapterData.number));
 }
 
 // Formatting
@@ -54,10 +65,15 @@ function formatRanobeLabel (json) {
   return json.name;
 }
 
+// RegExp
+const mangaNumberRegex = new RegExp('^\\d+(--)');
+
 function arrangeText (text) {
-  return text.replace(/\s+/gi, ' ');
+  return text.replace(/\s+|&nbsp;/gi, ' ').replace(/\<br\>/gi, '\n').replace(/<\s*[^>]*>/gi, '')
+    .replace(/&quot;/gi, '"').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>');
 }
 
+// utils
 function groupByKey (array, key) {
   return array
     .reduce((acc, obj) => {
@@ -79,7 +95,7 @@ function getBottom () {
 
 // logging
 function logStartDownload (label, slug) {
-  console.log(`Начата загрузка ${label} (${slug})!`);
+  console.log(`Начинаем загружать ${label} (${slug})!`);
 }
 
 function logChapter (chapter, last_chapter) {
@@ -91,8 +107,7 @@ function notify (text) {
   const bottom = getBottom();
   const element = document.createElement('div');
   element.className = 'kp_bm';
-  element.innerHTML =
-    `<div class="kp_ap kp_z">
+  element.innerHTML = `<div class="kp_ap kp_z">
       <div class="kp_bw">
         <svg class="svg-inline--fa fa-circle-info" aria-hidden="true" focusable="false" data-prefix="fas"
              data-icon="circle-info" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -120,22 +135,21 @@ function initProgress (total) {
 
   const element = document.createElement('div');
   element.className = 'kp_bm_rbl';
-  element.innerHTML =
-    `<div class="kp_ap kp_z">
+  element.innerHTML = `<div class="kp_ap kp_z">
       <div class="">
         <div id="rbl_progress_bar" class="kp_v">│${Array(0).fill('█').join('')}${Array(progress_bar_size).fill('░')
-      .join('')}│ (0/${total})</div>
+    .join('')}│ (0/${total})</div>
         <!----><!----></div>
       </div>`;
 
   fields.appendChild(element);
 }
 
-function updateProgress (cur, total) {
+function updateProgress (title, cur, total) {
   const complete = Math.round((cur * 1.0 / total) * progress_bar_size);
   const empty = progress_bar_size - complete;
   document.getElementById('rbl_progress_bar').innerText =
-    `│${Array(complete).fill('█').join('')}${Array(empty).fill('░').join('')}│ (${cur}/${total})`;
+    `${title} │${Array(complete).fill('█').join('')}${Array(empty).fill('░').join('')}│ (${cur}/${total})`;
 }
 
 function finishProgress () {
@@ -144,69 +158,125 @@ function finishProgress () {
   fields.removeChild(element);
 }
 
-// Download
-const mangaNumberRegex = new RegExp('^\\d+(--)');
+// TXT
+function oldApiTxtProcess (builder, content) {
+  const parser = new DOMParser(), doc = parser.parseFromString(content, 'text/html');
+  for (const element of doc.getElementsByTagName('p')) {
+    builder += arrangeText(element.innerHTML) + '\n';
+  }
+  return builder;
+}
+
+function newApiTxtProcess (builder, content) {
+  for (const elements of content.content) {
+    if (elements.type === 'paragraph' && elements.content) {
+      builder += arrangeText(elements.content.filter(element => element.type === 'text')
+        .reduce((acc, next) => acc + next.text, '')) + '\n';
+    }
+  }
+  return builder;
+}
 
 // Chapters .txt
-async function process_txt (chapters, ranobeId, label, zip, last_chapter) {
+async function process_txt (zip, chapters, ranobeId, label, last_chapter) {
   let count = 0;
   for (const chapterData of chapters) {
-    // ставим задержку 750 мс, чтобы не схватить 429 на больших (100+ глав) проектах
-    const chapter = await new Promise(resolve => setTimeout(resolve, 750))
-      .then(() => fetchChapter(ranobeId, chapterData.volume, chapterData.number));
+    const chapter = await getChapter(ranobeId, chapterData);
 
     // Text
     let builder = `${label}\nТом ${chapter.volume} Глава ${chapterData.number}\n\n`;
 
-    let content = chapter.content;
+    const content = chapter.content;
     if (content instanceof String || typeof content === 'string') {
-      const p = new DOMParser(), doc = p.parseFromString(content, 'text/html');
-      for (const element of doc.getElementsByTagName('p')) {
-        builder += arrangeText(element.innerText) + '\n';
-      }
+      builder = oldApiTxtProcess(builder, content);
     } else if (content instanceof Object && content.type === 'doc' && content.content) {
-      for (const elements of content.content) {
-        if (elements.type === 'paragraph' && elements.content) {
-          builder += arrangeText(elements.content.filter(element => element.type === 'text')
-            .reduce((acc, next) => acc + next.text, '')) + '\n';
-        }
-      }
+      builder = newApiTxtProcess(builder, content);
     }
-    zip.file(
-      `v${chapter.volume}_${chapter.number}.txt`,
-      builder
-    );
+    zip.file(`v${chapter.volume}_${chapter.number}.txt`, builder);
     logChapter(chapter, last_chapter);
-    updateProgress(++count, chapters.length);
+    updateProgress('загружаем', ++count, chapters.length);
   }
 }
 
 // PDF
-async function makePdf (label, volumeNum, volume, zip) {
+function procPdfTxt (pdf, text, isImageWasLast, currentY) {
+  const startY = isImageWasLast ? currentY : pdf.y;
+  pdf.text(arrangeText(text), pdf.x, startY).moveDown();
+  return false;
+}
+
+async function procPdfImg (pdf, url, isImageWasLast, currentY) {
+  const img = await getImage(url);
+  if (img && img.byteLength > 0) {
+    const dimension = pdf.openImage(img);
+    const imgHeight = Math.round((585.0 / dimension.width) * dimension.height);
+    const startY = isImageWasLast ? currentY : pdf.y;
+    if ((startY + imgHeight) > 842) {
+      pdf.addPage();
+      pdf.image(img, 5, 0, { width: 585, valign: 'center' });
+    } else {
+      pdf.image(img, 5, startY, { width: 585, valign: 'center' });
+    }
+    isImageWasLast = true;
+    currentY = pdf.y + imgHeight;
+  }
+  return { isImageWasLast, currentY };
+}
+
+async function oldApiPdfProcess (pdf, content) {
+  const parser = new DOMParser(), doc = parser.parseFromString(content, 'text/html');
+  let isImageWasLast = false;
+  let currentY = 0;
+  for (const element of doc.querySelectorAll('p,img')) {
+    if (element.nodeName.toLowerCase() === 'p') {
+      isImageWasLast = procPdfTxt(pdf, element.innerHTML, isImageWasLast, currentY);
+    }
+    if (element.nodeName.toLowerCase() === 'img' && element.src && /^https?:\/\/ranobelib\.me/g.test(element.src)) {
+      const __ret = await procPdfImg(pdf, element.src, isImageWasLast, currentY);
+      isImageWasLast = __ret.isImageWasLast;
+      currentY = __ret.currentY;
+    }
+  }
+}
+
+async function newApiPdfProcess (pdf, content, chapter) {
+  const imgUrls = chapter.attachments.reduce(
+    (acc, next) => ({ ...acc, [next.name]: `https://ranobelib.me${next.url}` }), {});
+  let isImageWasLast = false;
+  let currentY = 0;
+  for (const elements of content.content) {
+    if (elements.type === 'paragraph' && elements.content) {
+      isImageWasLast =
+        procPdfTxt(pdf, elements.content.filter(element => element.type === 'text')
+          .reduce((acc, next) => acc + next.text, ''), isImageWasLast, currentY);
+    }
+    if (elements.type === 'image' && elements.attrs && elements.attrs['images']) {
+      for (const img of elements.attrs['images']) {
+        const __ret = await procPdfImg(pdf, imgUrls[img.image], isImageWasLast, currentY);
+        isImageWasLast = __ret.isImageWasLast;
+        currentY = __ret.currentY;
+      }
+    }
+  }
+}
+
+async function makePdf (zip, volumeNum, volume, label) {
   const pdf = new PDFDocument({ size: 'A4' });
   const stream = pdf.pipe(blobStream());
   const font = await getFont();
   pdf.font(font);
   pdf.fontSize(20).text(`${label} - Том ${volumeNum}`);
-  volume.forEach((chapter) => {
+  for (const chapter of volume) {
     pdf.addPage();
     pdf.fontSize(18).text(`Глава ${chapter.number}. ${chapter.name}\n\n`);
     pdf.fontSize(11);
-    let content = chapter.content;
+    const content = chapter.content;
     if (content instanceof String || typeof content === 'string') {
-      const p = new DOMParser(), doc = p.parseFromString(content, 'text/html');
-      for (const element of doc.getElementsByTagName('p')) {
-        pdf.text(arrangeText(element.innerText)).moveDown();
-      }
+      await oldApiPdfProcess(pdf, content);
     } else if (content instanceof Object && content.type === 'doc' && content.content) {
-      for (const elements of content.content) {
-        if (elements.type === 'paragraph' && elements.content) {
-          pdf.text(arrangeText(elements.content.filter(element => element.type === 'text')
-            .reduce((acc, next) => acc + next.text, ''))).moveDown();
-        }
-      }
+      await newApiPdfProcess(pdf, content, chapter);
     }
-  });
+  }
   pdf.end();
   await stream.on('finish', function () {
     zip.file(`vol${volumeNum}.pdf`, stream.toBlob('application/pdf'), { binary: true });
@@ -214,20 +284,21 @@ async function makePdf (label, volumeNum, volume, zip) {
 }
 
 // Chapters .pdf
-async function process_pdf (chapters, ranobeId, label, zip, last_chapter) {
+async function process_pdf (zip, chapters, ranobeId, label, last_chapter) {
   let count = 0;
   const chaptersData = [];
   for (const chapterData of chapters) {
-    // ставим задержку 750 мс, чтобы не схватить 429 на больших (100+ глав) проектах
-    const chapter = await new Promise(resolve => setTimeout(resolve, 750))
-      .then(() => fetchChapter(ranobeId, chapterData.volume, chapterData.number));
+    const chapter = await getChapter(ranobeId, chapterData);
     chaptersData.push(chapter);
     logChapter(chapter, last_chapter);
-    updateProgress(++count, chapters.length);
+    updateProgress('загружаем', ++count, chapters.length);
   }
-  const volumes = groupByKey(chaptersData, 'volume');
-  for (const [volumeNum, volume] of Object.entries(volumes)) {
-    await makePdf(label, volumeNum, volume, zip);
+  const volumes = Object.entries(groupByKey(chaptersData, 'volume'));
+  count = 0;
+  updateProgress('собираем PDF', count, volumes.length);
+  for (const [volumeNum, volume] of volumes) {
+    await makePdf(zip, volumeNum, volume, label);
+    updateProgress('собираем PDF', ++count, volumes.length);
   }
   // задержка, чтобы последний том в списке успел сохраниться
   await new Promise(resolve => setTimeout(resolve, 250));
@@ -255,41 +326,53 @@ async function download (e, callback) {
       const description = document.getElementsByClassName('ur_p')[0].innerText;
 
       // info.txt
-      const infoText = `${label}\n${originalLabel}\n\n`
-        + `--==[ Описание ]==--\n${description}\n\n`
-        + `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeId}`;
-      zip.file(
-        `info.txt`,
-        infoText
-      );
+      const infoText = `${label}\n${originalLabel}\n\n` + `--==[ Описание ]==--\n${description}\n\n` +
+        `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeId}`;
+      zip.file(`info.txt`, infoText);
     } else {
       // Ranobe Title
       label = formatRanobeLabel(ranobeData);
 
       // info.txt
-      const infoText = `${label}\n${ranobeData.name}\n\n`
-        + `--==[ Описание ]==--\n${ranobeData.summary}\n\n`
-        +
-        `--==[ Информация ]==--\nТип: ${ranobeData.type.label}\nВыпуск: ${ranobeData.releaseDate} г.\nСтатус: ${ranobeData.status.label}\nПеревод: ${ranobeData.scanlateStatus.label}\n\n`
-        + `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeData.slug_url}`;
-      zip.file(
-        `info.txt`,
-        infoText
-      );
+      const infoText = `${label}\n${ranobeData.name}\n\n` + `--==[ Описание ]==--\n${ranobeData.summary}\n\n` +
+        `--==[ Информация ]==--\nТип: ${ranobeData.type.label}\nВыпуск: ${ranobeData.releaseDate} г.\nСтатус: ${ranobeData.status.label}\nПеревод: ${ranobeData.scanlateStatus.label}\n\n` +
+        `--==[ Страница ]==-\nhttps://ranobelib.me/ru/book/${ranobeData.slug_url}`;
+      zip.file(`info.txt`, infoText);
     }
     logStartDownload(label, slug);
 
     const chapters = await fetchRanobeChapters(ranobeId);
     const last_chapter = chapters[chapters.length - 1];
     initProgress(chapters.length);
-    await callback(chapters, ranobeId, label, zip, last_chapter);
+    await callback(zip, chapters, ranobeId, label, last_chapter);
 
     // Compressing
-    const base64 = await zip.generateAsync({ type: 'base64' });
-    const a = document.createElement('a');
-    a.href = 'data:application/zip;base64,' + base64;
-    a.download = `${slug}.zip`;
-    a.click();
+    updateProgress('архивируем', 0, 1);
+    if (JSZip.support['blob']) {
+      // если браузер поддерживает Blob, скачиваем его
+      await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: {
+          level: 6
+        }
+      })
+        .then(function (blob) {
+          saveAs(blob, `${slug}.zip`);
+        });
+    } else {
+      const base64 = await zip.generateAsync({
+        type: 'base64',
+        compression: 'DEFLATE',
+        compressionOptions: {
+          level: 6
+        }
+      });
+      const a = document.createElement('a');
+      a.href = 'data:application/zip;base64,' + base64;
+      a.download = `${slug}.zip`;
+      a.click();
+    }
   } catch (e) {
     console.log(e);
     finishProgress();
