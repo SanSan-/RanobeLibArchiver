@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.7
-// @description  Ranobe from ranobelib.me -> .zip file of .txt
+// @version      1.7.1
+// @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
+// @license      MIT
 // @include      /^https?:\/\/ranobelib\.me\/ru\/book\/[\w\-]+(?:\?.+|#.*)?$/
 // @icon         https://ranobelib.me/images/logo/rl/favicon.ico
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.9.1/jszip.min.js
@@ -35,6 +36,7 @@ async function fetchRanobeData (ranobeId) {
     `https://api.lib.social/api/manga/${ranobeId}?fields[]=background&fields[]=eng_name&fields[]=otherNames&fields[]=summary&fields[]=releaseDate&fields[]=type_id&fields[]=caution&fields[]=views&fields[]=close_view&fields[]=rate_avg&fields[]=rate&fields[]=genres&fields[]=tags&fields[]=teams&fields[]=franchise&fields[]=authors&fields[]=publisher&fields[]=userRating&fields[]=moderated&fields[]=metadata&fields[]=metadata.count&fields[]=metadata.close_comments&fields[]=manga_status_id&fields[]=chap_count&fields[]=status_id&fields[]=artists&fields[]=format`)).data;
 }
 
+// ToDo: найти более подходящий шрифт, чтоб и с кириллицей дружил, и с иероглифами, и спец. символами
 async function getFont () {
   return (await fetch('https://ranobelib.me/build/assets/OpenSans-Regular-C58Z07Fu.ttf')).arrayBuffer();
 }
@@ -68,6 +70,7 @@ function formatRanobeLabel (json) {
 // RegExp
 const mangaNumberRegex = new RegExp('^\\d+(--)');
 
+// ToDo: заменить непотребство из replace-ов на декодер по типу @mdevils/html-entities
 function arrangeText (text) {
   return text.replace(/\s+|&nbsp;/gi, ' ').replace(/\<br\>/gi, '\n').replace(/<\s*[^>]*>/gi, '')
     .replace(/&quot;/gi, '"').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>');
@@ -144,8 +147,7 @@ function notify (text) {
   const element = document.createElement('div');
   element.className = 'kp_bm';
   element.innerHTML = `<div class="kp_ap kp_z">
-      <div class="kp_bw">${infoIcon}</div>
-      <div class=""><div class="kp_v">${text}</div></div>
+      <div class="kp_bw">${infoIcon} ${text}</div>
     </div>`;
   bottom.appendChild(element);
 
@@ -423,20 +425,25 @@ function procPdfTxt (pdf, text, isImageWasLast, currentY) {
   return false;
 }
 
+// ToDo: продумать, что делать с горизонтальными картинками и слишком маленькими
 async function procPdfImg (pdf, url, isImageWasLast, currentY) {
   const img = await getImage(url);
   if (img && img.byteLength > 0) {
-    const dimension = pdf.openImage(img);
-    const imgHeight = Math.round((585.0 / dimension.width) * dimension.height);
-    const startY = isImageWasLast ? currentY : pdf.y;
-    if ((startY + imgHeight) > 842) {
-      pdf.addPage();
-      pdf.image(img, 5, 0, { width: 585, valign: 'center' });
-    } else {
-      pdf.image(img, 5, startY, { width: 585, valign: 'center' });
+    try {
+      const dimension = pdf.openImage(img);
+      const imgHeight = Math.round((585.0 / dimension.width) * dimension.height);
+      const startY = isImageWasLast ? currentY : pdf.y;
+      if ((startY + imgHeight) > 842) {
+        pdf.addPage();
+        pdf.image(img, 5, 0, { width: 585, valign: 'center' });
+      } else {
+        pdf.image(img, 5, startY, { width: 585, valign: 'center' });
+      }
+      isImageWasLast = true;
+      currentY = pdf.y + imgHeight;
+    } catch (e) {
+      console.error(`ошибка при обработке картинку с url: ${url}`, e);
     }
-    isImageWasLast = true;
-    currentY = pdf.y + imgHeight;
   }
   return { isImageWasLast, currentY };
 }
@@ -625,7 +632,7 @@ async function download (e, callback) {
       a.click();
     }
   } catch (e) {
-    console.log(e);
+    console.error(e);
     finishProgress();
     notify('Во время загрузки произошла ошибка!');
     return;
