@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.7.1
+// @version      1.7.2
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
@@ -10,6 +10,7 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.9.1/jszip.min.js
 // @require      https://github.com/foliojs/pdfkit/releases/download/v0.15.0/pdfkit.standalone.js
 // @require      https://cdn.jsdelivr.net/npm/blob-stream@0.1.3/+esm
+// @require      https://unpkg.com/range-slider-input@2
 // @require      https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js
 // @grant        none
 // ==/UserScript==
@@ -48,6 +49,14 @@ async function getImage (url) {
       return response.arrayBuffer();
     }
   }
+}
+
+async function getRanobe () {
+  const path = window.location.pathname.split('/');
+  const ranobeId = path[path.length - 1];
+
+  const ranobeData = await fetchRanobeData(ranobeId);
+  return { ranobeId, ranobeData };
 }
 
 async function getChapter (ranobeId, chapterData) {
@@ -159,7 +168,10 @@ function notify (text) {
 // Settings
 let defaultSettings = {
   downloadByVolumes: true,
+  downloadAllChapters: true,
   downloadPdfImages: true,
+  chapterStartIndex: 0,
+  chapterEndIndex: -1,
   pdfVolumeFontSize: 21,
   pdfChapterFontSize: 18,
   pdfCommonFontSize: 11
@@ -176,7 +188,10 @@ function initSettings () {
   globalSettings.id = 'global-settings';
   globalSettings.innerHTML = `<div hidden style="display: none">
     <div id="setting-download-by-volumes">${defaultSettings.downloadByVolumes}</div>
+    <div id="setting-download-all-chapters">${defaultSettings.downloadAllChapters}</div>
     <div id="setting-download-pdf-images">${defaultSettings.downloadPdfImages}</div>
+    <div id="setting-chapter-start-index">${defaultSettings.chapterStartIndex}</div>
+    <div id="setting-chapter-end-index">${defaultSettings.chapterEndIndex}</div>
     <div id="setting-pdf-volume-font-size">${defaultSettings.pdfVolumeFontSize}</div>
     <div id="setting-pdf-chapter-font-size">${defaultSettings.pdfChapterFontSize}</div>
     <div id="setting-pdf-common-font-size">${defaultSettings.pdfCommonFontSize}</div>
@@ -190,84 +205,108 @@ function closeSettingsMenu () {
   popup.removeChild(menu);
 }
 
-function showSettingsMenu () {
+async function showSettingsMenu () {
   const popup = getPopupRoot();
+  const { ranobeData } = await getRanobe();
+  const chaptersCount = ranobeData.items_count.uploaded || 0;
+  const chapterStartIndex = parseInt(getSetting('setting-chapter-start-index')) || 0;
+  const minChapter = chapterStartIndex > chaptersCount - 1 ? chaptersCount - 1 : chapterStartIndex + 1;
+  const chapterEndIndex = parseInt(getSetting('setting-chapter-end-index')) || 0;
+  const maxChapter = (chapterEndIndex > chaptersCount || chapterEndIndex < 0) ? chaptersCount : chapterEndIndex;
   const menu = document.createElement('div');
   menu.id = 'popup-settings-menu';
-  menu.innerHTML = `<div class="popup is-hidden" data-type="side">
-    <div class="popup-overlay"></div>
-    <div class="popup__inner">
-      <div class="popup__content scrollable" role="dialog" aria-modal="true" tabindex="-1">
-        <div class="xg_e">
-          <div class="card-inline _fillable _border-bottom _padding-sm">
-            <div class="cover _shadow _size-sm">
-              <div class="cover__wrap" style="padding-top: 0">${gearIcon}</div>
+  menu.innerHTML = `<div class='popup is-hidden' data-type='side'>
+    <div class='popup-overlay'></div>
+    <div class='popup__inner'>
+      <div class='popup__content scrollable' role='dialog' aria-modal='true' tabindex='-1'>
+        <div class='xg_e'>
+          <div class='card-inline _fillable _border-bottom _padding-sm'>
+            <div class='cover _shadow _size-sm'>
+              <div class='cover__wrap' style='padding-top: 0'>${gearIcon}</div>
             </div>
-            <div class="card-inline__body">
-              <div class="card-inline__name">Настройки RanobeLib Archiver</div>
+            <div class='card-inline__body'>
+              <div class='card-inline__name'>Настройки RanobeLib Archiver</div>
             </div>
             <div>
-              <a id="close-settings-btn" title="закрыть">${closeIcon}</a>
+              <a id='close-settings-btn' title='закрыть'>${closeIcon}</a>
             </div>
           </div>
-          <div class="xg_z" style="flex-grow: 0">
-            <div class="zj_am">
-              <div class="zs_bn">
-                <div class="zs_ap"><span>Общие настройки</span></div>
+          <div class='xg_z' id='common-settings-panel' style='flex-grow: 0'>
+            <div class='zj_am'>
+              <div class='zs_bn'>
+                <div class='zs_ap'><span>Общие настройки</span></div>
               </div>
             </div>
-            <div class="zj_am" id="common-settings-panel" >
-              <div class="zs_bn">
-                <div class="zs_ap">Объединять главы по томам</div>
-                <span class="zj_f5">
-                  <input type="checkbox" id="checkbox-download-by-volumes" ${getSetting(
+            <div class='zj_am'>
+              <div class='zs_bn'>
+                <div class='zs_ap'>Объединять главы по томам</div>
+                <span class='zj_f5'>
+                  <input type='checkbox' id='checkbox-download-by-volumes' ${getSetting(
     'setting-download-by-volumes') === 'true' ? 'checked' : ''} />
                 </span>
               </div>
             </div>
-          </div>
-          <div class="xg_z scrollable">
-            <div class="zj_am">
-              <div class="zs_bn">
-                <div class="zs_ap"><span>Настройки PDF</span></div>
+            <div class='zj_am'>
+              <div class='zs_bn'>
+                <div class='zs_ap'>Скачать все главы</div>
+                <span class='zj_f5'>
+                  <input type='checkbox' id='checkbox-download-all-chapters' ${getSetting(
+    'setting-download-all-chapters') === 'true' ? 'checked' : ''} />
+                </span>
               </div>
             </div>
-            <div class="zj_am" id="pdf-settings-panel">
-              <div class="zs_bn">
-                <div class="zs_ap">Скачивать с картинками</div>
-                <span class="zj_f5">
-                  <input type="checkbox" id="checkbox-download-pdf-images" ${getSetting(
+            <div class='zj_am' id='chapters-range-slider-panel' ${getSetting(
+    'setting-download-all-chapters') === 'true' ? 'hidden' : ''}>
+              <div class='zs_bn'>
+                <div class='zs_ap' style='width: 100%'>Диапазон глав</div>
+                <output id='output-min-chapter'>${minChapter}</output>
+                <div id='chapters-range-slider'></div>
+                <output id='output-max-chapter'>${maxChapter}</output>
+              </div>
+            </div>
+          </div>
+          <div class='xg_z scrollable'>
+            <div class='zj_am'>
+              <div class='zs_bn'>
+                <div class='zs_ap'><span>Настройки PDF</span></div>
+              </div>
+            </div>
+            <div class='zj_am' id='pdf-settings-panel'>
+              <div class='zs_bn'>
+                <div class='zs_ap'>Скачивать с картинками</div>
+                <span class='zj_f5'>
+                  <input type='checkbox' id='checkbox-download-pdf-images' ${getSetting(
     'setting-download-pdf-images') === 'true' ? 'checked' : ''} />
                 </span>
               </div>
-              <div class="zs_bn">
-                <div class="zs_ap">Размер шрифта заголовка Тома</div>
-                <span class="zj_f5">
-                  <input type="range" id="input-pdf-volume-font-size" min="16" max="60" value="${getSetting(
-    'setting-pdf-volume-font-size')}"/>
-                  <output id="output-pdf-volume-font-size"></output>
+              <div class='zs_bn'>
+                <div class='zs_ap'>Размер шрифта заголовка Тома</div>
+                <span class='zj_f5'>
+                  <input type='range' id='input-pdf-volume-font-size' min='16' max='60' value='${getSetting(
+    'setting-pdf-volume-font-size')}'/>
+                  <output id='output-pdf-volume-font-size'></output>
                 </span>
               </div>
-              <div class="zs_bn">
-                <div class="zs_ap">Размер шрифта заголовка Главы</div>
-                <span class="zj_f5">
-                  <input type="range" id="input-pdf-chapter-font-size" min="12" max="48" value="${getSetting(
-    'setting-pdf-chapter-font-size')}"/>
-                  <output id="output-pdf-chapter-font-size"></output>
+              <div class='zs_bn'>
+                <div class='zs_ap'>Размер шрифта заголовка Главы</div>
+                <span class='zj_f5'>
+                  <input type='range' id='input-pdf-chapter-font-size' min='12' max='48' value='${getSetting(
+    'setting-pdf-chapter-font-size')}'/>
+                  <output id='output-pdf-chapter-font-size'></output>
                 </span>
               </div>
-              <div class="zs_bn">
-                <div class="zs_ap">Размер шрифта основного текста</div>
-                <span class="zj_f5">
-                  <input type="range" id="input-pdf-common-font-size" min="8" max="36" value="${getSetting(
-    'setting-pdf-common-font-size')}"/>
-                  <output id="output-pdf-common-font-size"></output>
+              <div class='zs_bn'>
+                <div class='zs_ap'>Размер шрифта основного текста</div>
+                <span class='zj_f5'>
+                  <input type='range' id='input-pdf-common-font-size' min='8' max='36' value='${getSetting(
+    'setting-pdf-common-font-size')}'/>
+                  <output id='output-pdf-common-font-size'></output>
                 </span>
               </div>
             </div>
           </div>
-          <div class="xg_eh">
-            <button id="apply-settings-btn" class="btn is-filled is-full-width variant-primary" type="button">
+          <div class='xg_eh'>
+            <button id='apply-settings-btn' class='btn is-filled is-full-width variant-primary' type='button'>
               ${applyIcon}
               <span>Применить</span>
             </button>
@@ -275,9 +314,25 @@ function showSettingsMenu () {
         </div>
       </div>
     </div>
-  </div>`;
+  </div>;`;
 
   popup.appendChild(menu);
+  const outputMinChapter = document.getElementById('output-min-chapter');
+  const outputMaxChapter = document.getElementById('output-max-chapter');
+  rangeSlider(
+    document.querySelector('#chapters-range-slider'),
+    {
+      min: 1, max: chaptersCount, value: [minChapter, maxChapter], onInput: (value, _userInteraction) => {
+        outputMinChapter.textContent = value[0];
+        outputMaxChapter.textContent = value[1];
+      }
+    }
+  );
+  const checkboxDownloadAllChapters = document.getElementById('checkbox-download-all-chapters');
+  const chaptersRangeSliderPanel = document.getElementById('chapters-range-slider-panel');
+  checkboxDownloadAllChapters.addEventListener('change', (e) => {
+    chaptersRangeSliderPanel.hidden = !!e.target.checked;
+  });
   const inputPdfVolumeFontSize = document.getElementById('input-pdf-volume-font-size');
   const outputPdfVolumeFontSize = document.getElementById('output-pdf-volume-font-size');
   outputPdfVolumeFontSize.textContent = inputPdfVolumeFontSize.value;
@@ -304,6 +359,12 @@ function showSettingsMenu () {
       document.getElementById('checkbox-download-by-volumes').checked;
     document.getElementById('setting-download-pdf-images').innerText =
       document.getElementById('checkbox-download-pdf-images').checked;
+    document.getElementById('setting-download-all-chapters').innerText =
+      document.getElementById('checkbox-download-all-chapters').checked;
+    document.getElementById('setting-chapter-start-index').innerText =
+      parseInt(document.getElementById('output-min-chapter').innerText) - 1;
+    document.getElementById('setting-chapter-end-index').innerText =
+      document.getElementById('output-max-chapter').innerText;
     document.getElementById('setting-pdf-volume-font-size').innerText =
       document.getElementById('input-pdf-volume-font-size').value;
     document.getElementById('setting-pdf-chapter-font-size').innerText =
@@ -562,6 +623,16 @@ async function pdfProcess (zip, chapters, ranobeId, label, last_chapter) {
   await new Promise(resolve => setTimeout(resolve, 250));
 }
 
+function getChaptersRange (chapters) {
+  if (getSetting('setting-download-all-chapters') === 'true') {
+    return chapters;
+  }
+  const count = chapters.length;
+  const start = parseInt(getSetting('setting-chapter-start-index')) || 0;
+  const end = parseInt(getSetting('setting-chapter-end-index')) || 0;
+  return chapters.slice(start > count - 1 ? count - 1 : start, (end > count || end < 0) ? count : end);
+}
+
 async function download (e, callback) {
   notify('Загрузка начата!');
 
@@ -570,12 +641,9 @@ async function download (e, callback) {
     const zip = new JSZip();
 
     // Data
-    const path = window.location.pathname.split('/');
-    const ranobeId = path[path.length - 1];
-
     let label;
 
-    const ranobeData = await fetchRanobeData(ranobeId);
+    const { ranobeId, ranobeData } = await getRanobe();
     const slug = ranobeId.replace(mangaNumberRegex, '');
     if ('toast' in ranobeData) {
       // Ranobe Title
@@ -599,7 +667,8 @@ async function download (e, callback) {
     }
     logStartDownload(label, slug);
 
-    const chapters = await fetchRanobeChapters(ranobeId);
+    const fetchChapters = await fetchRanobeChapters(ranobeId);
+    const chapters = getChaptersRange(fetchChapters);
     const last_chapter = chapters[chapters.length - 1];
     initProgress(chapters.length);
     await callback(zip, chapters, ranobeId, label, last_chapter);
@@ -666,6 +735,6 @@ function createDownloadButton (icon, title, callback) {
 }
 
 initSettings();
-createButton(gearIcon, 'Настройки', () => showSettingsMenu());
+createButton(gearIcon, 'Настройки', async () => showSettingsMenu());
 createDownloadButton(txtIcon, 'Скачать TXT', txtProcess);
 createDownloadButton(pdfIcon, 'Скачать PDF', pdfProcess);
