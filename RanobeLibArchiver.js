@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.7.2
+// @version      1.7.3
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
@@ -219,7 +219,7 @@ async function showSettingsMenu () {
     <div class='popup-overlay'></div>
     <div class='popup__inner'>
       <div class='popup__content scrollable' role='dialog' aria-modal='true' tabindex='-1'>
-        <div class='xg_e'>
+        <div class='x2_e'>
           <div class='card-inline _fillable _border-bottom _padding-sm'>
             <div class='cover _shadow _size-sm'>
               <div class='cover__wrap' style='padding-top: 0'>${gearIcon}</div>
@@ -231,73 +231,73 @@ async function showSettingsMenu () {
               <a id='close-settings-btn' title='закрыть'>${closeIcon}</a>
             </div>
           </div>
-          <div class='xg_z' id='common-settings-panel' style='flex-grow: 0'>
-            <div class='zj_am'>
-              <div class='zs_bn'>
-                <div class='zs_ap'><span>Общие настройки</span></div>
+          <div class='x2_aq' id='common-settings-panel' style='flex-grow: 0'>
+            <div class='aaj_a4'>
+              <div class='aak_ci'>
+                <div class='aak_bc'><span>Общие настройки</span></div>
               </div>
             </div>
-            <div class='zj_am'>
-              <div class='zs_bn'>
-                <div class='zs_ap'>Объединять главы по томам</div>
-                <span class='zj_f5'>
+            <div class='aaj_a4'>
+              <div class='aak_ci'>
+                <div class='aak_bc'>Объединять главы по томам</div>
+                <span class='aaj_h8'>
                   <input type='checkbox' id='checkbox-download-by-volumes' ${getSetting(
     'setting-download-by-volumes') === 'true' ? 'checked' : ''} />
                 </span>
               </div>
             </div>
-            <div class='zj_am'>
-              <div class='zs_bn'>
-                <div class='zs_ap'>Скачать все главы</div>
-                <span class='zj_f5'>
+            <div class='aaj_a4'>
+              <div class='aak_ci'>
+                <div class='aak_bc'>Скачать все главы</div>
+                <span class='aaj_h8'>
                   <input type='checkbox' id='checkbox-download-all-chapters' ${getSetting(
     'setting-download-all-chapters') === 'true' ? 'checked' : ''} />
                 </span>
               </div>
             </div>
-            <div class='zj_am' id='chapters-range-slider-panel' ${getSetting(
+            <div class='aaj_a4' id='chapters-range-slider-panel' ${getSetting(
     'setting-download-all-chapters') === 'true' ? 'hidden' : ''}>
-              <div class='zs_bn'>
-                <div class='zs_ap' style='width: 100%'>Диапазон глав</div>
+              <div class='aak_ci'>
+                <div class='aak_bc' style='width: 100%'>Диапазон глав</div>
                 <output id='output-min-chapter'>${minChapter}</output>
                 <div id='chapters-range-slider'></div>
                 <output id='output-max-chapter'>${maxChapter}</output>
               </div>
             </div>
           </div>
-          <div class='xg_z scrollable'>
-            <div class='zj_am'>
-              <div class='zs_bn'>
-                <div class='zs_ap'><span>Настройки PDF</span></div>
+          <div class='x2_aq scrollable'>
+            <div class='aaj_a4'>
+              <div class='aak_ci'>
+                <div class='aak_bc'><span>Настройки PDF</span></div>
               </div>
             </div>
-            <div class='zj_am' id='pdf-settings-panel'>
-              <div class='zs_bn'>
-                <div class='zs_ap'>Скачивать с картинками</div>
-                <span class='zj_f5'>
+            <div class='aaj_a4' id='pdf-settings-panel'>
+              <div class='aak_ci'>
+                <div class='aak_bc'>Скачивать с картинками</div>
+                <span class='aaj_h8'>
                   <input type='checkbox' id='checkbox-download-pdf-images' ${getSetting(
     'setting-download-pdf-images') === 'true' ? 'checked' : ''} />
                 </span>
               </div>
-              <div class='zs_bn'>
-                <div class='zs_ap'>Размер шрифта заголовка Тома</div>
-                <span class='zj_f5'>
+              <div class='aak_ci'>
+                <div class='aak_bc'>Размер шрифта заголовка Тома</div>
+                <span class='aaj_h8'>
                   <input type='range' id='input-pdf-volume-font-size' min='16' max='60' value='${getSetting(
     'setting-pdf-volume-font-size')}'/>
                   <output id='output-pdf-volume-font-size'></output>
                 </span>
               </div>
-              <div class='zs_bn'>
-                <div class='zs_ap'>Размер шрифта заголовка Главы</div>
-                <span class='zj_f5'>
+              <div class='aak_ci'>
+                <div class='aak_bc'>Размер шрифта заголовка Главы</div>
+                <span class='aaj_h8'>
                   <input type='range' id='input-pdf-chapter-font-size' min='12' max='48' value='${getSetting(
     'setting-pdf-chapter-font-size')}'/>
                   <output id='output-pdf-chapter-font-size'></output>
                 </span>
               </div>
-              <div class='zs_bn'>
-                <div class='zs_ap'>Размер шрифта основного текста</div>
-                <span class='zj_f5'>
+              <div class='aak_ci'>
+                <div class='aak_bc'>Размер шрифта основного текста</div>
+                <span class='aaj_h8'>
                   <input type='range' id='input-pdf-common-font-size' min='8' max='36' value='${getSetting(
     'setting-pdf-common-font-size')}'/>
                   <output id='output-pdf-common-font-size'></output>
@@ -305,7 +305,7 @@ async function showSettingsMenu () {
               </div>
             </div>
           </div>
-          <div class='xg_eh'>
+          <div class='x2_b7'>
             <button id='apply-settings-btn' class='btn is-filled is-full-width variant-primary' type='button'>
               ${applyIcon}
               <span>Применить</span>
