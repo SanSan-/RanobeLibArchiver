@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.7.6
+// @version      1.7.7
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
@@ -961,10 +961,24 @@ function finishProgress () {
 // TXT
 function getParagraphText (content) {
   let res = '';
-  for (const element of content) {
+  for (const element of content || []) {
     if (element.type === 'text') res += element.text;
+    else if (element.type === 'hardBreak') res += '\n';
   }
   return res;
+}
+
+function formatDescription (description) {
+  if (description === undefined || description === null) return '';
+  if (typeof description === 'string' || description instanceof String) return arrangeText(description);
+  if (!Array.isArray(description.content)) return '';
+  const chunks = [];
+  for (const block of description.content) {
+    if (block.type !== 'paragraph' || !block.content) continue;
+    const text = arrangeText(getParagraphText(block.content));
+    if (text) chunks.push(text);
+  }
+  return chunks.join('\n');
 }
 
 function oldApiTxtProcess (chunks, content) {
@@ -1309,7 +1323,7 @@ async function download (e, callback) {
       label = formatRanobeLabel(ranobeData);
 
       // info.txt
-      const infoText = `${label}\n${ranobeData.name}\n\n` + `--==[ Описание ]==--\n${ranobeData.summary}\n\n` +
+      const infoText = `${label}\n${ranobeData.name}\n\n` + `--==[ Описание ]==--\n${formatDescription(ranobeData.summary)}\n\n` +
         `--==[ Информация ]==--\nТип: ${ranobeData.type.label}\nВыпуск: ${ranobeData.releaseDate} г.\nСтатус: ${ranobeData.status.label}\nПеревод: ${ranobeData.scanlateStatus.label}\n\n` +
         `--==[ Страница ]==-\nhttps://${domain}/ru/book/${ranobeData.slug_url}`;
       zip.file(`info.txt`, infoText);
