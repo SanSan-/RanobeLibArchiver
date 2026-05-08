@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.7.7
+// @version      1.7.8
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
@@ -17,6 +17,9 @@
 
 const domain = 'ranobelib.me';
 const apiDomain = 'api.cdnlibs.org';
+const fetchRetryCount = 4;
+const fetchRetryDelay = 1000;
+const imageFetchDelay = 750;
 let apiHeadersCache, fontPromise, buttonsObserver, buttonsMountTimer;
 const buttons = [];
 
@@ -83,10 +86,37 @@ async function getFont () {
 }
 
 async function getImage (url) {
-  if (/\.(jpe?g|png)$/i.test(url)) {
-    const response = await fetch(url);
+  if (/\.(jpe?g|png)$/i.test(url)) try {
+    const response = await fetchWithRetry(url);
     if (response.status === 200) return response.arrayBuffer();
+  } catch (e) {
+    console.warn(`картинка пропущена после повторных попыток: ${url}. ${e && e.message ? e.message : e}`);
   }
+}
+
+function wait (ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry (url, options) {
+  let error;
+  for (let i = 0; i <= fetchRetryCount; ++i) {
+    await wait(imageFetchDelay);
+    try {
+      const response = await fetch(getRetryUrl(url, i), options);
+      if (response.status !== 429 && response.status < 500) return response;
+      error = new Error(`HTTP ${response.status}`);
+    } catch (e) {
+      error = e;
+    }
+    if (i < fetchRetryCount) await wait((fetchRetryDelay << i) + Math.trunc(Math.random() * 250));
+  }
+  throw error;
+}
+
+function getRetryUrl (url, attempt) {
+  if (attempt === 0) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}rbl_retry=${Date.now()}_${attempt}`;
 }
 
 async function getRanobe () {
@@ -1060,6 +1090,8 @@ const pdfImageMargin = 5;
 const pdfImageTextGap = 8;
 const pdfImageMaxScale = 1;
 const pdfLandscapeMinRatio = 1.15;
+const pdfLandscapeMaxRatio = 2.6;
+const pdfLandscapeMinPageFill = .35;
 
 function addPdfPage (pdf, layout = pdfPortraitLayout) {
   pdf.addPage({ size: pdfPageSize, layout });
@@ -1081,7 +1113,12 @@ function isPdfLandscapeImage (size) {
 }
 
 function isLargePdfLandscapeImage (size) {
-  return isPdfLandscapeImage(size) && size.width > pdfA4PortraitWidth - (pdfImageMargin << 1);
+  if (!isPdfLandscapeImage(size)) return false;
+  const ratio = size.width / size.height;
+  if (ratio > pdfLandscapeMaxRatio || size.width <= pdfA4PortraitWidth - (pdfImageMargin << 1)) return false;
+  const width = 842 - (pdfImageMargin << 1);
+  const height = Math.round(width / ratio);
+  return height >= 595 * pdfLandscapeMinPageFill;
 }
 
 function getPdfImagePlacement (pdf, size) {
