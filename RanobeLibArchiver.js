@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.7.8
+// @version      1.8
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
@@ -1208,7 +1208,7 @@ async function newApiPdfProcess (pdf, content, chapter) {
     if (elements.type === 'paragraph' && elements.content) {
       isImageWasLast = procPdfTxt(pdf, getParagraphText(elements.content), isImageWasLast, currentY);
     }
-    const images = elements.attrs && elements.attrs.images;
+    const images = elements.attrs?.images;
     if (downloadPdfImages && elements.type === 'image' && images) {
       for (const img of images) {
         const url = imgUrls[img.image];
@@ -1409,22 +1409,23 @@ function mountButton (config) {
   const header = getHeader();
   if (!header) return false;
   const existing = document.getElementById(config.id);
-  if (existing && existing.parentElement === header) return true;
+  if (existing?.parentElement === header && existing.firstElementChild?.tagName === 'BUTTON') return true;
   if (existing) existing.remove();
   const template = getButtonTemplate(header);
-  if (!template || !template.firstChild) return false;
+  if (!template?.firstChild) return false;
   const button = document.createElement('div');
   button.id = config.id;
   button.dataset.rblArchiverButton = 'true';
   button.className = template.className || '';
-  const be = document.createElement('div');
-  be.className = template.firstChild.className || '';
-  be.innerHTML = config.icon;
-  be.title = config.title;
-  be.style.cursor = 'pointer';
-  button.appendChild(be);
+  const control = document.createElement('button');
+  control.className = template.firstElementChild?.className || 'btn is-icon';
+  control.type = 'button';
+  control.innerHTML = config.icon;
+  control.title = config.title;
+  control.style.cursor = 'pointer';
+  button.appendChild(control);
   header.insertBefore(button, header.firstChild);
-  button.addEventListener('click', config.listener);
+  control.addEventListener('click', config.listener);
   return true;
 }
 
@@ -1444,7 +1445,7 @@ function areButtonsMounted () {
   if (!header) return false;
   for (const button of buttons) {
     const element = document.getElementById(button.id);
-    if (!element || element.parentElement !== header) return false;
+    if (element?.parentElement !== header || element.firstElementChild?.tagName !== 'BUTTON') return false;
   }
   return true;
 }
