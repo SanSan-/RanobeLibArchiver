@@ -10,7 +10,6 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
 // @require      https://github.com/foliojs/pdfkit/releases/download/v0.15.2/pdfkit.standalone.js
 // @require      https://cdn.jsdelivr.net/npm/blob-stream@0.1.3/+esm
-// @require      https://unpkg.com/range-slider-input@2.4.5/dist/rangeslider.nostyle.umd.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js
 // @grant        none
 // ==/UserScript==
@@ -784,6 +783,101 @@ function getIntSetting (id, defaultValue = 0) {
   return parseInt(getSetting(id), 10) || defaultValue;
 }
 
+function getBoundedInt (value, defaultValue, minValue = 0, maxValue = Number.MAX_SAFE_INTEGER) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) return defaultValue;
+  return Math.min(Math.max(number, minValue), maxValue);
+}
+
+function getUploadedChaptersCount (ranobeData) {
+  return getBoundedInt(ranobeData && ranobeData.items_count && ranobeData.items_count.uploaded, 0);
+}
+
+function clampRangeValue (value, min, max) {
+  return Math.min(Math.max(getBoundedInt(value, min, min, max), min), max);
+}
+
+function createRangeSlider (element, options) {
+  const min = options.min;
+  const max = Math.max(min, options.max);
+  const values = [clampRangeValue(options.value[0], min, max), clampRangeValue(options.value[1], min, max)];
+  if (values[0] > values[1]) values.reverse();
+  let activeThumb = 0;
+
+  element.className = 'range-slider';
+  element.innerHTML = '<div class="range-slider__range"></div><span class="range-slider__thumb" tabindex="0" role="slider"></span><span class="range-slider__thumb" tabindex="0" role="slider"></span>';
+  const range = element.querySelector('.range-slider__range');
+  const thumbs = element.querySelectorAll('.range-slider__thumb');
+
+  function percent (value) {
+    return max === min ? 0 : (value - min) * 100 / (max - min);
+  }
+
+  function update () {
+    const left = percent(values[0]);
+    const right = percent(values[1]);
+    range.style.left = `${left}%`;
+    range.style.width = `${right - left}%`;
+    thumbs[0].style.left = `${left}%`;
+    thumbs[1].style.left = `${right}%`;
+    thumbs[0].setAttribute('aria-valuemin', min);
+    thumbs[0].setAttribute('aria-valuemax', values[1]);
+    thumbs[0].setAttribute('aria-valuenow', values[0]);
+    thumbs[1].setAttribute('aria-valuemin', values[0]);
+    thumbs[1].setAttribute('aria-valuemax', max);
+    thumbs[1].setAttribute('aria-valuenow', values[1]);
+    options.onInput([values[0], values[1]], true);
+  }
+
+  function setValue (index, value) {
+    values[index] = index === 0
+      ? Math.min(clampRangeValue(value, min, max), values[1])
+      : Math.max(clampRangeValue(value, min, max), values[0]);
+    update();
+  }
+
+  function valueFromEvent (event) {
+    const rect = element.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    return Math.round(min + Math.min(Math.max(ratio, 0), 1) * (max - min));
+  }
+
+  function startDrag (event) {
+    const value = valueFromEvent(event);
+    activeThumb = Math.abs(value - values[0]) <= Math.abs(value - values[1]) ? 0 : 1;
+    setValue(activeThumb, value);
+    thumbs[activeThumb].focus();
+    if (element.setPointerCapture) element.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function moveDrag (event) {
+    if (event.buttons !== 1) return;
+    setValue(activeThumb, valueFromEvent(event));
+  }
+
+  element.addEventListener('pointerdown', startDrag);
+  element.addEventListener('pointermove', moveDrag);
+  for (let i = 0; i < thumbs.length; ++i) {
+    thumbs[i].addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+        setValue(i, values[i] - 1);
+        event.preventDefault();
+      } else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+        setValue(i, values[i] + 1);
+        event.preventDefault();
+      } else if (event.key === 'Home') {
+        setValue(i, i === 0 ? min : values[0]);
+        event.preventDefault();
+      } else if (event.key === 'End') {
+        setValue(i, i === 0 ? values[1] : max);
+        event.preventDefault();
+      }
+    });
+  }
+  update();
+}
+
 function bindRangeOutput (input, output) {
   output.textContent = input.value;
   input.addEventListener('input', (event) => {
@@ -818,7 +912,7 @@ async function showSettingsMenu () {
   closeSettingsMenu();
   const popup = getPopupRoot();
   const { ranobeData } = await getRanobe();
-  const chaptersCount = ranobeData.items_count.uploaded || 0;
+  const chaptersCount = getUploadedChaptersCount(ranobeData);
   const chapterStartIndex = getIntSetting('setting-chapter-start-index');
   const minChapter = chapterStartIndex > chaptersCount - 1 ? chaptersCount - 1 : chapterStartIndex + 1;
   const chapterEndIndex = getIntSetting('setting-chapter-end-index');
@@ -918,15 +1012,15 @@ async function showSettingsMenu () {
   const outputMinChapter = document.getElementById('output-min-chapter');
   const outputMaxChapter = document.getElementById('output-max-chapter');
   const chaptersRangeSlider = document.getElementById('chapters-range-slider');
-  rangeSlider(
-    chaptersRangeSlider,
-    {
-      min: 1, max: chaptersCount, value: [minChapter, maxChapter], onInput: (value, _userInteraction) => {
-        outputMinChapter.textContent = value[0];
-        outputMaxChapter.textContent = value[1];
-      }
+  createRangeSlider(chaptersRangeSlider, {
+    min: 1,
+    max: chaptersCount,
+    value: [minChapter, maxChapter],
+    onInput: (value, _userInteraction) => {
+      outputMinChapter.textContent = value[0];
+      outputMaxChapter.textContent = value[1];
     }
-  );
+  });
   const checkboxDownloadByVolumes = document.getElementById('checkbox-download-by-volumes');
   const checkboxDownloadPdfImages = document.getElementById('checkbox-download-pdf-images');
   const checkboxDownloadAllChapters = document.getElementById('checkbox-download-all-chapters');
