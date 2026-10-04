@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.8
+// @version      1.8.1
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
 // @include      /^https?:\/\/ranobelib\.me\/ru\/book\/[\w\-]+(?:\?.+|#.*)?$/
 // @icon         https://ranobelib.me/images/logo/rl/favicon.ico
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
-// @require      https://github.com/foliojs/pdfkit/releases/download/v0.15.2/pdfkit.standalone.js
-// @require      https://cdn.jsdelivr.net/npm/blob-stream@0.1.3/+esm
+// @require      https://cdn.jsdelivr.net/npm/pdfkit@0.13.0/js/pdfkit.standalone.js#sha256-41qk5dewLKulpzhP3H6G7mY+5q+vzxMaxolsOGmZD/8=
+// @require      https://cdn.jsdelivr.net/npm/blob-stream-browserify@0.1.3/index.js#sha256-bFrIR3MiIsKhM2EDZdTJ3eY7iSluq1W7e6dNVwScEYw=
 // @require      https://unpkg.com/range-slider-input@2.4.5/dist/rangeslider.nostyle.umd.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js
 // @grant        none
