@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.8.1
+// @version      1.8.2
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
@@ -10,7 +10,6 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
 // @require      https://cdn.jsdelivr.net/npm/pdfkit@0.13.0/js/pdfkit.standalone.js#sha256-41qk5dewLKulpzhP3H6G7mY+5q+vzxMaxolsOGmZD/8=
 // @require      https://cdn.jsdelivr.net/npm/blob-stream-browserify@0.1.3/index.js#sha256-bFrIR3MiIsKhM2EDZdTJ3eY7iSluq1W7e6dNVwScEYw=
-// @require      https://unpkg.com/range-slider-input@2.4.5/dist/rangeslider.nostyle.umd.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js
 // @grant        none
 // ==/UserScript==
@@ -784,6 +783,142 @@ function getIntSetting (id, defaultValue = 0) {
   return parseInt(getSetting(id), 10) || defaultValue;
 }
 
+function getBoundedInt (value, defaultValue, minValue = 0, maxValue = Number.MAX_SAFE_INTEGER) {
+  if (typeof value !== 'number' && typeof value !== 'string') return defaultValue;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) return defaultValue;
+  return Math.min(Math.max(number, minValue), maxValue);
+}
+
+function getUploadedChaptersCount (ranobeData) {
+  return getBoundedInt(ranobeData && ranobeData.items_count && ranobeData.items_count.uploaded, 0);
+}
+
+function clampRangeValue (value, min, max) {
+  return Math.min(Math.max(getBoundedInt(value, min, min, max), min), max);
+}
+
+function createRangeSlider (element, options) {
+  const min = options.min;
+  const max = Math.max(min, options.max);
+  const values = [clampRangeValue(options.value[0], min, max), clampRangeValue(options.value[1], min, max)];
+  if (values[0] > values[1]) values.reverse();
+  const disabled = min === max;
+  let activeThumb = 0;
+  let activePointerId = null;
+  let sharedDragValue = null;
+
+  element.className = 'range-slider';
+  element.innerHTML = '<div class="range-slider__range"></div><span class="range-slider__thumb" tabindex="0" role="slider"></span><span class="range-slider__thumb" tabindex="0" role="slider"></span>';
+  const range = element.querySelector('.range-slider__range');
+  const thumbs = element.querySelectorAll('.range-slider__thumb');
+  if (disabled) element.setAttribute('data-disabled', '');
+  for (let i = 0; i < thumbs.length; ++i) {
+    thumbs[i].setAttribute('aria-label', i === 0 ? 'Первая глава' : 'Последняя глава');
+    thumbs[i].setAttribute('aria-disabled', disabled);
+    thumbs[i].tabIndex = disabled ? -1 : 0;
+  }
+
+  function percent (value) {
+    return max === min ? 0 : (value - min) * 100 / (max - min);
+  }
+
+  function update () {
+    const left = percent(values[0]);
+    const right = percent(values[1]);
+    range.style.left = `${left}%`;
+    range.style.width = `${right - left}%`;
+    thumbs[0].style.left = `${left}%`;
+    thumbs[1].style.left = `${right}%`;
+    thumbs[0].setAttribute('aria-valuemin', min);
+    thumbs[0].setAttribute('aria-valuemax', values[1]);
+    thumbs[0].setAttribute('aria-valuenow', values[0]);
+    thumbs[1].setAttribute('aria-valuemin', values[0]);
+    thumbs[1].setAttribute('aria-valuemax', max);
+    thumbs[1].setAttribute('aria-valuenow', values[1]);
+    options.onInput([values[0], values[1]], true);
+  }
+
+  function setValue (index, value) {
+    values[index] = index === 0
+      ? Math.min(clampRangeValue(value, min, max), values[1])
+      : Math.max(clampRangeValue(value, min, max), values[0]);
+    update();
+  }
+
+  function valueFromEvent (event) {
+    const rect = element.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    return Math.round(min + Math.min(Math.max(ratio, 0), 1) * (max - min));
+  }
+
+  function startDrag (event) {
+    if (disabled || activePointerId !== null || event.button !== 0 || !event.isPrimary) return;
+    const value = valueFromEvent(event);
+    const targetIndex = Array.from(thumbs).indexOf(event.target);
+    sharedDragValue = targetIndex >= 0 && values[0] === values[1] ? values[0] : null;
+    if (targetIndex >= 0) {
+      activeThumb = targetIndex;
+    } else if (values[0] === values[1]) {
+      activeThumb = value < values[0] ? 0 : 1;
+    } else {
+      activeThumb = Math.abs(value - values[0]) <= Math.abs(value - values[1]) ? 0 : 1;
+    }
+    activePointerId = event.pointerId;
+    setValue(activeThumb, value);
+    thumbs[activeThumb].focus();
+    if (element.setPointerCapture) element.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function moveDrag (event) {
+    if (event.pointerId !== activePointerId) return;
+    if (event.buttons !== 1) {
+      endDrag(event);
+      return;
+    }
+    const value = valueFromEvent(event);
+    if (sharedDragValue !== null && value !== sharedDragValue) {
+      activeThumb = value < sharedDragValue ? 0 : 1;
+      sharedDragValue = null;
+      thumbs[activeThumb].focus();
+    }
+    setValue(activeThumb, value);
+  }
+
+  function endDrag (event) {
+    if (event.pointerId !== activePointerId) return;
+    activePointerId = null;
+    sharedDragValue = null;
+    if (element.hasPointerCapture?.(event.pointerId)) element.releasePointerCapture(event.pointerId);
+  }
+
+  element.addEventListener('pointerdown', startDrag);
+  element.addEventListener('pointermove', moveDrag);
+  element.addEventListener('pointerup', endDrag);
+  element.addEventListener('pointercancel', endDrag);
+  element.addEventListener('lostpointercapture', endDrag);
+  for (let i = 0; i < thumbs.length; ++i) {
+    thumbs[i].addEventListener('keydown', (event) => {
+      if (disabled) return;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+        setValue(i, values[i] - 1);
+        event.preventDefault();
+      } else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+        setValue(i, values[i] + 1);
+        event.preventDefault();
+      } else if (event.key === 'Home') {
+        setValue(i, i === 0 ? min : values[0]);
+        event.preventDefault();
+      } else if (event.key === 'End') {
+        setValue(i, i === 0 ? values[1] : max);
+        event.preventDefault();
+      }
+    });
+  }
+  update();
+}
+
 function bindRangeOutput (input, output) {
   output.textContent = input.value;
   input.addEventListener('input', (event) => {
@@ -818,11 +953,13 @@ async function showSettingsMenu () {
   closeSettingsMenu();
   const popup = getPopupRoot();
   const { ranobeData } = await getRanobe();
-  const chaptersCount = ranobeData.items_count.uploaded || 0;
+  const chaptersCount = getUploadedChaptersCount(ranobeData);
   const chapterStartIndex = getIntSetting('setting-chapter-start-index');
-  const minChapter = chapterStartIndex > chaptersCount - 1 ? chaptersCount - 1 : chapterStartIndex + 1;
+  const minChapter = chaptersCount > 0 ? clampRangeValue(chapterStartIndex + 1, 1, chaptersCount) : 0;
   const chapterEndIndex = getIntSetting('setting-chapter-end-index');
-  const maxChapter = (chapterEndIndex > chaptersCount || chapterEndIndex < 0) ? chaptersCount : chapterEndIndex;
+  const maxChapter = chaptersCount > 0
+    ? Math.max(minChapter, chapterEndIndex < 0 ? chaptersCount : clampRangeValue(chapterEndIndex, 1, chaptersCount))
+    : 0;
   const menu = document.createElement('div');
   menu.id = 'popup-settings-menu';
   menu.innerHTML = `<div class='popup' data-type='side' data-name='ranobelib-archiver-settings'>
@@ -918,18 +1055,19 @@ async function showSettingsMenu () {
   const outputMinChapter = document.getElementById('output-min-chapter');
   const outputMaxChapter = document.getElementById('output-max-chapter');
   const chaptersRangeSlider = document.getElementById('chapters-range-slider');
-  rangeSlider(
-    chaptersRangeSlider,
-    {
-      min: 1, max: chaptersCount, value: [minChapter, maxChapter], onInput: (value, _userInteraction) => {
-        outputMinChapter.textContent = value[0];
-        outputMaxChapter.textContent = value[1];
-      }
+  createRangeSlider(chaptersRangeSlider, {
+    min: chaptersCount > 0 ? 1 : 0,
+    max: chaptersCount,
+    value: [minChapter, maxChapter],
+    onInput: (value, _userInteraction) => {
+      outputMinChapter.textContent = value[0];
+      outputMaxChapter.textContent = value[1];
     }
-  );
+  });
   const checkboxDownloadByVolumes = document.getElementById('checkbox-download-by-volumes');
   const checkboxDownloadPdfImages = document.getElementById('checkbox-download-pdf-images');
   const checkboxDownloadAllChapters = document.getElementById('checkbox-download-all-chapters');
+  checkboxDownloadAllChapters.disabled = chaptersCount === 0;
   const chaptersRangeSliderPanel = document.getElementById('chapters-range-slider-panel');
   checkboxDownloadAllChapters.addEventListener('change', (e) => {
     chaptersRangeSliderPanel.hidden = !!e.target.checked;
@@ -950,7 +1088,7 @@ async function showSettingsMenu () {
     setSetting('setting-download-by-volumes', checkboxDownloadByVolumes.checked);
     setSetting('setting-download-pdf-images', checkboxDownloadPdfImages.checked);
     setSetting('setting-download-all-chapters', checkboxDownloadAllChapters.checked);
-    setSetting('setting-chapter-start-index', parseInt(outputMinChapter.textContent, 10) - 1);
+    setSetting('setting-chapter-start-index', Math.max(0, getBoundedInt(outputMinChapter.textContent, 0) - 1));
     setSetting('setting-chapter-end-index', outputMaxChapter.textContent);
     setSetting('setting-pdf-volume-font-size', inputPdfVolumeFontSize.value);
     setSetting('setting-pdf-chapter-font-size', inputPdfChapterFontSize.value);
