@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name         RanobeLib Archiver
 // @namespace    https://github.com/SanSan-/RanobeLibArchiver
-// @version      1.8.2
+// @version      1.8.4
 // @description  Ranobe from ranobelib.me -> .zip file of .txt or .pdf
 // @author       An1by & SanSan
 // @license      MIT
 // @include      /^https?:\/\/ranobelib\.me\/ru\/book\/[\w\-]+(?:\?.+|#.*)?$/
 // @icon         https://ranobelib.me/images/logo/rl/favicon.ico
-// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js#sha256-rMfkFFWoB2W1/Zx+4bgHim0WC7vKRVrq6FTeZclH1Z4=
 // @require      https://cdn.jsdelivr.net/npm/pdfkit@0.13.0/js/pdfkit.standalone.js#sha256-41qk5dewLKulpzhP3H6G7mY+5q+vzxMaxolsOGmZD/8=
 // @require      https://cdn.jsdelivr.net/npm/blob-stream-browserify@0.1.3/index.js#sha256-bFrIR3MiIsKhM2EDZdTJ3eY7iSluq1W7e6dNVwScEYw=
-// @require      https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js#sha256-xoh0y6ov0WULfXcLMoaA6nZfszdgI8w2CEJ/3k8NBIE=
 // @grant        none
 // ==/UserScript==
 
@@ -19,6 +19,10 @@ const apiDomain = 'api.cdnlibs.org';
 const fetchRetryCount = 4;
 const fetchRetryDelay = 1000;
 const imageFetchDelay = 750;
+const fontUrls = [
+  'https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf',
+  'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf'
+];
 let apiHeadersCache, fontPromise, buttonsObserver, buttonsMountTimer;
 const buttons = [];
 
@@ -78,18 +82,55 @@ async function fetchRanobeData (ranobeId) {
     `https://${apiDomain}/api/manga/${ranobeId}?fields[]=background&fields[]=eng_name&fields[]=otherNames&fields[]=summary&fields[]=releaseDate&fields[]=type_id&fields[]=caution&fields[]=views&fields[]=close_view&fields[]=rate_avg&fields[]=rate&fields[]=genres&fields[]=tags&fields[]=teams&fields[]=user&fields[]=franchise&fields[]=authors&fields[]=publisher&fields[]=userRating&fields[]=moderated&fields[]=metadata&fields[]=metadata.count&fields[]=metadata.close_comments&fields[]=manga_status_id&fields[]=chap_count&fields[]=status_id&fields[]=artists&fields[]=format`)).data;
 }
 
+async function fetchFont () {
+  let error;
+  for (const url of fontUrls) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const font = await response.arrayBuffer();
+      if (font.byteLength < 12 || new DataView(font).getUint32(0) !== 0x4f54544f) {
+        throw new Error('Ответ не содержит шрифт OpenType');
+      }
+      return font;
+    } catch (e) {
+      error = e;
+      console.warn(`Не удалось загрузить шрифт с ${new URL(url).host}: ${e.message}`);
+    }
+  }
+  throw new Error(`Не удалось загрузить шрифт для PDF: ${error.message}`);
+}
+
 async function getFont () {
-  if (!fontPromise) fontPromise = fetch(`https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf`)
-    .then(response => response.arrayBuffer());
+  if (!fontPromise) fontPromise = fetchFont().catch(error => {
+    fontPromise = undefined;
+    throw error;
+  });
   return fontPromise;
 }
 
+function getImageUrl (url) {
+  if (typeof url !== 'string' || !url) return;
+  const origin = `https://${domain}`;
+  try {
+    const imageUrl = url.startsWith('/') ? new URL(url, origin) : new URL(url);
+    if (imageUrl.protocol !== 'https:' || imageUrl.origin !== origin || imageUrl.username || imageUrl.password) return;
+    if (!/\.(jpe?g|png)$/i.test(imageUrl.pathname)) return;
+    imageUrl.hash = '';
+    return imageUrl.href;
+  } catch (e) {
+    return;
+  }
+}
+
 async function getImage (url) {
-  if (/\.(jpe?g|png)$/i.test(url)) try {
-    const response = await fetchWithRetry(url);
+  const imageUrl = getImageUrl(url);
+  if (!imageUrl) return;
+  try {
+    const response = await fetchWithRetry(imageUrl);
     if (response.status === 200) return response.arrayBuffer();
   } catch (e) {
-    console.warn(`картинка пропущена после повторных попыток: ${url}. ${e && e.message ? e.message : e}`);
+    console.warn(`картинка пропущена после повторных попыток: ${imageUrl}. ${e && e.message ? e.message : e}`);
   }
 }
 
@@ -98,11 +139,14 @@ function wait (ms) {
 }
 
 async function fetchWithRetry (url, options) {
+  const imageUrl = getImageUrl(url);
+  if (!imageUrl) throw new Error('Недопустимый URL изображения');
+  const requestOptions = { ...options, redirect: 'error' };
   let error;
   for (let i = 0; i <= fetchRetryCount; ++i) {
     await wait(imageFetchDelay);
     try {
-      const response = await fetch(getRetryUrl(url, i), options);
+      const response = await fetch(getRetryUrl(imageUrl, i), requestOptions);
       if (response.status !== 429 && response.status < 500) return response;
       error = new Error(`HTTP ${response.status}`);
     } catch (e) {
@@ -1326,7 +1370,7 @@ async function oldApiPdfProcess (pdf, content) {
     if (nodeName === 'P') {
       isImageWasLast = procPdfTxt(pdf, element.innerHTML, isImageWasLast, currentY);
     }
-    if (downloadPdfImages && nodeName === 'IMG' && element.src && element.src.startsWith(`https://${domain}`)) {
+    if (downloadPdfImages && nodeName === 'IMG' && element.src) {
       const __ret = await procPdfImg(pdf, element.src, isImageWasLast, currentY);
       isImageWasLast = __ret.isImageWasLast;
       currentY = __ret.currentY;
@@ -1339,7 +1383,7 @@ async function newApiPdfProcess (pdf, content, chapter) {
   let imgUrls;
   if (downloadPdfImages) {
     imgUrls = {};
-    for (const attachment of chapter.attachments || []) imgUrls[attachment.name] = `https://${domain}${attachment.url}`;
+    for (const attachment of chapter.attachments || []) imgUrls[attachment.name] = attachment.url;
   }
   let isImageWasLast = false, currentY = 0;
   for (const elements of content.content) {
@@ -1388,10 +1432,10 @@ async function makePdf (pdf, chapter, commonFontSize) {
 }
 
 async function makeVolumePdf (zip, volumeNum, volume, label) {
+  const font = await getFont();
   const pdf = new PDFDocument({ size: pdfPageSize });
   const stream = pdf.pipe(blobStream());
   const finishPromise = waitPdfFinish(stream, zip, `vol${volumeNum}.pdf`);
-  const font = await getFont();
   const fontSize = getPdfFontSizes();
   pdf.font(font);
   pdf.fontSize(fontSize.volume).text(`${label} - Том ${volumeNum}`);
@@ -1405,10 +1449,10 @@ async function makeVolumePdf (zip, volumeNum, volume, label) {
 }
 
 async function makeChapterPdf (zip, chapter, label) {
+  const font = await getFont();
   const pdf = new PDFDocument({ size: pdfPageSize });
   const stream = pdf.pipe(blobStream());
   const finishPromise = waitPdfFinish(stream, zip, `v${chapter.volume}_${chapter.number}.pdf`);
-  const font = await getFont();
   const fontSize = getPdfFontSizes();
   pdf.font(font);
   pdf.fontSize(fontSize.volume).text(`${label}\n`);
